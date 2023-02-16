@@ -1,0 +1,165 @@
+---
+title: "Lab 6"
+author: "Katheryn Moya"
+date: "2/16/2023"
+output: html_document
+---
+
+```{r setup, echo = TRUE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+library(janitor)
+library(palmerpenguins)
+
+## packages for cluster analysis, extend our options for visualizations, etc
+
+library(NbClust)
+library(cluster)
+library(factoextra)
+library(dendextend) #for visualizing dendrograms
+library(ggdendro)
+
+```
+
+# Intro to cluster analysis - k-means, heirarchal
+
+## Part 1: K-means clustering
+
+```{r}
+ggplot(penguins) +
+  geom_point(aes(x = bill_length_mm,
+                 y = bill_depth_mm,
+                 color = species, 
+                 shape = sex), 
+             size = 3, 
+             alpha = 0.7) + # for transparency
+  scale_color_manual(values = c("orange", "cyan4", "darkmagenta"))
+
+
+ggplot(penguins) +
+  geom_point(aes(x = flipper_length_mm,
+                 y = body_mass_g,
+                 color = species,
+                 shape = sex),
+             size = 3, alpha = 0.7) +
+  scale_color_manual(values = c("orange", "cyan4", "darkmagenta"))
+
+# need to figure out the clusters, in this case we do know the data, but clustering is usually used for data we don't know (unsupervised machine learning)
+```
+
+One of the first questions we would have is how many clusters we should have. R can help us decide what a good starting point is
+
+### Create a complete, scaled version of the data 
+ - by complete, we mean to only keep data that have observations in them (essentially `drop_na()`)
+
+```{r}
+penguins_complete <- penguins %>% 
+  drop_na(bill_length_mm, bill_depth_mm, body_mass_g, flipper_length_mm) # we're only interested in the NA values in the numeric columns because we want to rescale it and that is purely based on numeric values
+
+
+penguins_scale <- penguins_complete %>% 
+  select(ends_with('_mm'), body_mass_g) %>%  #can also select the ones that have a numeric type, but that would also include the year which we don't need
+  scale() # creating a matrix where all of the values in each column have a mean of 0 and recentering them with a SD of 1 to get all of them on the same level playing field
+
+```
+
+### Estimate number of clusters
+
+We know that three clusters are the right amount because we know our penguins data. This will give us an automatic way to determine how many clusters we should aim for.
+
+```{r}
+number_est <- NbClust(penguins_scale, min.nc = 2, max.nc = 10,
+                     method = "kmeans") # setting parameters
+#looking for where do you see the greatest jump in value by adding one more cluster (blue graph), marginal value of the 5th cluster shows that that's probably the best amount of cluster --- in the console, it goes through different algorithms and it tells you among them how many they recommend with a conclusion of how to move forward. usually just go with the majority rule
+
+fviz_nbclust(penguins_scale, FUNcluster = kmeans,
+             method = "wss", k.max = 10) # another way to determine this
+```
+
+### Run some k-means clustering
+
+```{r}
+
+#set seed because it starts with a random centroids
+
+set.seed(123) # so we all end up with the same clusters, dont need to do this with heirarchical
+
+penguins_km <- kmeans(penguins_scale, 
+                      center = 3, # need to tell it the number of centroids, will iterate until we reach a central point
+                      iter.max = 10, #re-adjust where the centroids go, keeps it from going on forever
+                      nstart = 25) # do it 25 times, and out of those, find results that had the lowerst sum of square errors. 25 will finish at a reasonable amount of times and give us a good amount
+
+
+# penguins_km$size #size of different clusters we resulted in
+# penguins_km$cluster #cluster number, we can then stick that into original dataset
+
+
+penguins_cl <- penguins_complete %>% 
+  mutate(cluster_no = factor(penguins_km$cluster)) #take the penguins_complete and add a new column that assigns each observation to a cluster, will treat it as a numeric, so we must make it a factor so it's a category
+
+```
+
+```{r}
+ggplot(penguins_cl) +
+  geom_point(aes(x = flipper_length_mm, 
+                 y = body_mass_g, 
+                 color = cluster_no,
+                 shape = species)) +
+  scale_color_viridis_d()
+
+ggplot(penguins_cl) +
+  geom_point(aes(x = bill_length_mm, 
+                 y = bill_depth_mm, 
+                 color = cluster_no,
+                 shape = species)) +
+  scale_color_viridis_d()
+
+
+penguins_cl %>% 
+  select(species, cluster_no) %>% #confusion matrix == how these things "shake out", seeing what is falling into what cluster
+  table() #according to this method of cluster, was able to perfectly clustering gentoo, pretty good job with the other two. but at the same time, we're not doing this to predict anything, just good to know it has a reasonable interpretation
+```
+
+## Hierarchical clustering
+
+### Start with complete linkage
+
+```{r}
+## create distance matrix
+
+peng_dist <- dist(penguins_scale, method = "euclidean") # Pythagorean theorem
+# get a massive matrix, each one is the distance from one penguin to another
+# going to look at which ones are the closest much like we did in lecture the other day
+
+###hierarchicial clustering (complete linkage)
+
+peng_hc_complete <- hclust(peng_dist, method = "complete")
+## also: single, average, word.D are some of the other methods we can put in there that will probably return different clusters
+
+
+## plot a dendrogram
+plot(peng_hc_complete, cex = .6, hang = -1)
+
+#depending on how many clusters we want, we can decide what height to  to cut this
+
+##cut the tree into three cluster
+peng_cut_hc <- cutree(peng_hc_complete, 3)
+table(peng_cut_hc, penguins_complete$species) # will see how well it matches up our other one, results are a bit different than with the k-means clustering
+```
+
+Differences between this and BLR:
+
+- BLR --> we have known data, we are using that to predict unknown data based off of characteristics. we are trying to predict on new data based on known set of data
+
+- Here, we didn't need to know anything about the data to create those clusters, just going off of the variables we input. Trying to identify patterns
+
+
+## 
+
+
+```{r}
+
+```
+
+
